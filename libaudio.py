@@ -2,8 +2,9 @@ import sounddevice as sd
 import soundfile as sf
 import scipy.signal
 import threading
+from typing import Optional
 
-def play_thread(file_name, device_id=None):
+def play_thread(file_name: str, device_id: Optional[int] = None) -> None:
     """Play a .wav file on the selected audio device."""
     data, sample_rate = sf.read(file_name)
     # Device ID = None selects the default device
@@ -18,7 +19,7 @@ def play_thread(file_name, device_id=None):
     sd.play(data, samplerate=device_sample_rate, device=device_id)
     sd.wait()  # Wait until file finishes playing
 
-def play(file_name, device_id=None):
+def play(file_name: str, device_id: Optional[int] = None) -> None:
     """Play audio in a thread."""
     playback_thread = threading.Thread(target=play_thread, args=(file_name, device_id))
     playback_thread.start()
