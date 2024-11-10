@@ -1,3 +1,5 @@
 .envrc
 .venv
 .vscode
+NOTES.md
+__pycache__
