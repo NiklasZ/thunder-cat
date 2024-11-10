@@ -5,7 +5,8 @@
 2. Install linux video utiliy devices: `sudo apt install v4l-utils`.
 3. Create a virtual environment and `pip install -r requirements.txt`. Note you can save the current dependencies using `pip freeze > requirements.txt`.
 4. Add the source code folder to `PYTHONPATH` (i.e `export PYTHONPATH="${PYTHONPATH}:${PWD}/src"`)
-5. (Optional) run `pre-commit install` to enable pre-commit hooks
+5. Run `./generate_data_folders.sh` to create the folders to contain sound, video and logging data.
+6. (Optional) run `pre-commit install` to enable pre-commit hooks.
 
 ## How to stream the camera to your host device via OpenCV
 1. Determine the host IP address (e.g `ifconfig`) and a free port and assign them to Env variables `HOST_IP` and `HOST_PORT`  on the device side.
