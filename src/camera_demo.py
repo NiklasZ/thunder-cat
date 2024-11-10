@@ -1,4 +1,3 @@
-import numpy as np
 import cv2 as cv
 
 from camera import get_camera_paths
@@ -10,7 +9,7 @@ def play_video(device_idx: int, enable_mjpg: bool = True):
 
     Args:
         device_idx (int): device idx to use
-        enable_mjpg (bool, optional): Enables higher resolution MJPG format. 
+        enable_mjpg (bool, optional): Enables higher resolution MJPG format.
             Defaults to True.
     """
     cap = cv.VideoCapture(device_idx)
@@ -42,7 +41,7 @@ def play_video(device_idx: int, enable_mjpg: bool = True):
 
     # When everything done, release the capture
     cap.release()
-    cv.destroyAllWindows()  
+    cv.destroyAllWindows()
 
 
 if __name__ == "__main__":
