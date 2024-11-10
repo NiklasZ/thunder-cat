@@ -1,6 +1,5 @@
 import sounddevice as sd
 import soundfile as sf
-import scipy.signal
 import threading
 from typing import Optional
 

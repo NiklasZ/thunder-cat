@@ -1,27 +1,7 @@
-import subprocess
 import numpy as np
 import cv2 as cv
-import re
 
-
-def get_camera_indices() -> list[int]:
-    output = subprocess.check_output(
-        "v4l2-ctl --list-devices", shell=True, text=True
-    )
-    devices = output.strip().split("\n\n")
-
-    device_name = "USB 2.0 Camera"
-
-    # Iterate through each camera block to find the device name
-    for device in devices:
-        if device_name in device:
-            # Find all video device entries associated with this camera
-            video_devices = re.findall(r"/dev/video(\d+)", device)
-            # Convert the first match to an integer index
-            if video_devices:
-                return [int(index) for index in video_devices]
-
-    raise Exception(f'Could not find device "{device_name}". Found: {devices}')
+from camera import get_camera_paths
 
 
 # Copied from https://docs.opencv.org/4.x/dd/d43/tutorial_py_video_display.html
@@ -62,12 +42,12 @@ def play_video(device_idx: int, enable_mjpg: bool = True):
 
     # When everything done, release the capture
     cap.release()
-    cv.destroyAllWindows()
+    cv.destroyAllWindows()  
 
 
 if __name__ == "__main__":
     # print(cv.getBuildInformation())
-    device_indices = get_camera_indices()
+    device_indices = get_camera_paths()
     print(f"Camera indices: {device_indices}")
     chosen_idx = device_indices[0]
     print(f"Using idx {chosen_idx}..")
