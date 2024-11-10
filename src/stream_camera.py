@@ -1,6 +1,7 @@
-import cv2 as cv
-import subprocess
 import os
+import subprocess
+
+import cv2 as cv
 
 from src.camera import get_camera_paths, get_device_idx_for_format
 
