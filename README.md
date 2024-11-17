@@ -8,7 +8,14 @@
 5. Run `./generate_data_folders.sh` to create the folders to contain sound, video and logging data.
 6. (Optional) run `pre-commit install` to enable pre-commit hooks.
 
-## How to stream the camera to your host device via OpenCV
-1. Determine the host IP address (e.g `ifconfig`) and a free port and assign them to Env variables `HOST_IP` and `HOST_PORT`  on the device side.
-2. Run `python ./stream_camera` on the device side.
+## Running
+
+### Streaming to another device
+1. Determine the host IP address (e.g `ifconfig`) and a free port and assign them to Env variables `HOST_IP` and `HOST_PORT` on the device side.
+2. Run `python ./src/main.py` on the device side.
 3. On the host side, receive the video with a suitable UDP streaming tool. E.g `ffplay -fflags nobuffer udp://<HOST_IP>:<HOST_PORT>?pkt_size=1316`
+
+## Other
+
+### Logging
+The logging of the code can be controlled with the `LOG_LEVEL` env var. For example `export LOG_LEVEL="DEBUG"`.s

@@ -1,9 +1,19 @@
 import cv2 as cv
+import numpy as np
 from cv2 import BackgroundSubtractorMOG2
 from cv2.typing import MatLike, Rect
 
+from configuration import configure_logger
 
-def label_motion(frame: MatLike, subtractor: BackgroundSubtractorMOG2, minimum_area=1000) -> tuple[MatLike, list[Rect]]:
+logger = configure_logger()
+
+
+def detect_motion(
+    frame: MatLike,
+    subtractor: BackgroundSubtractorMOG2,
+    draw_bounding_boxes: bool,
+    minimum_area=1000,
+) -> tuple[MatLike, list[Rect]]:
 
     labelled_frame = frame.copy()
 
@@ -18,11 +28,16 @@ def label_motion(frame: MatLike, subtractor: BackgroundSubtractorMOG2, minimum_a
 
     # Draw bounding boxes around detected motion
     bounding_boxes = []
-    for contour in contours:
-        if cv.contourArea(contour) > minimum_area:  # Adjust this threshold to filter out noise
-            rect = cv.boundingRect(contour)
+
+    if len(contours):
+        areas = [cv.contourArea(c) for c in contours]
+        idx = np.argmax(areas)
+        largest_contour = contours[idx]
+        if cv.contourArea(largest_contour) > minimum_area:  # Adjust this threshold to filter out noise
+            rect = cv.boundingRect(largest_contour)
             bounding_boxes.append(rect)
             x, y, w, h = rect
-            cv.rectangle(labelled_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            if draw_bounding_boxes:
+                cv.rectangle(labelled_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
     return labelled_frame, bounding_boxes
