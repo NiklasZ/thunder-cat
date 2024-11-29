@@ -7,7 +7,7 @@ from io import TextIOWrapper
 
 from cv2.typing import MatLike
 
-from configuration import VideoTarget, configure_logger
+from configuration import VideoTarget, configure_logger, to_timestamp
 
 DEFAULT_VIDEO_LOG_DIR = "data/log"
 
@@ -108,7 +108,7 @@ class VideoLogger(VideoTarget):
             self._close_current_writers()
             self.frame_counter = 0
             self.last_frame_written = current_time
-            self.last_frame_written_str = self.last_frame_written.strftime("%Y_%m_%d-%H_%M_%S")
+            self.last_frame_written_str = to_timestamp(self.last_frame_written)
             video_path = os.path.join(self.logging_dir, f"{self.last_frame_written_str}.mp4")
 
             # We use FFMPEG directly to have more control over the encoder and use a less

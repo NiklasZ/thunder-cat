@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 
 import cv2 as cv
 from cv2.typing import MatLike
@@ -29,6 +30,13 @@ def configure_logger(log_level: str | int | None = None) -> logging.Logger:
         logger.addHandler(handler)
 
     return logger
+
+
+logger = configure_logger()
+
+
+def to_timestamp(d: datetime) -> str:
+    return d.strftime("%Y_%m_%d-%H_%M_%S")
 
 
 @dataclass
@@ -61,8 +69,10 @@ def configure_video_source(source: FileSource | CameraSource) -> cv.VideoCapture
 
         fourcc = cv.VideoWriter_fourcc(*source.video_format)
         cap.set(cv.CAP_PROP_FOURCC, fourcc)
+        logger.info(f"Opening camera: {source.device_name}")
     elif isinstance(source, FileSource):
         cap = cv.VideoCapture(source.file_path)
+        logger.info(f"Loading video: {source.file_path}")
     else:
         raise Exception(f"Unhandled video source type {type(source)}")
 
