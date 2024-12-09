@@ -7,7 +7,7 @@ from io import TextIOWrapper
 
 from cv2.typing import MatLike
 
-from configuration import VideoTarget, configure_logger, to_timestamp
+from configuration import VideoTarget, configure_logger, current_timestamp, to_timestamp
 
 DEFAULT_VIDEO_LOG_DIR = "data/log"
 
@@ -90,6 +90,7 @@ class VideoLogger(VideoTarget):
         file containing annotations for that particular frame.
         """
         annotations = annotations or {}
+        annotations = {k: v for k, v in annotations.items() if k != "class_logits"}
         # Periodically check memory use
         if self.frame_counter % self.check_memory_every == 0:
             manage_directory_size(self.logging_dir, self.max_log_size_gb)
@@ -155,8 +156,12 @@ class VideoLogger(VideoTarget):
             self.video_writer.wait()
             self.video_writer = None
         if self.annotation_writer:
+            self.annotation_writer.write(
+                f"Frame {self.frame_counter}: {json.dumps({'end_time':current_timestamp()})}\n"
+            )
             self.annotation_writer.close()
             self.annotation_writer = None
+            logger.info("Finished writing files")
 
     def close(self):
         self._close_current_writers()

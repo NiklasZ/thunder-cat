@@ -5,9 +5,16 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import cv2 as cv
+import pandas as pd
 from cv2.typing import MatLike
 
 from camera import get_camera_paths, get_device_idx_for_format
+
+# We do some manual annotation as we sometimes capture frames for classification
+# that aren't of good quality or ended up picking noise over the intended target
+VERIFIED_LABEL = "verified"  # class label matches (manually verified)
+JUNK_LABEL = "junk"  # class label does not match (manually verified)
+SOUND_FOLDER = "data/sound"
 
 
 def configure_logger(log_level: str | int | None = None) -> logging.Logger:
@@ -37,6 +44,10 @@ logger = configure_logger()
 
 def to_timestamp(d: datetime) -> str:
     return d.strftime("%Y_%m_%d-%H_%M_%S")
+
+
+def current_timestamp() -> str:
+    return to_timestamp(datetime.now())
 
 
 @dataclass
@@ -85,3 +96,18 @@ class VideoTarget:
 
     def close(self):
         raise NotImplementedError("Should be implemented by child class")
+
+
+def filter_junk(df: pd.DataFrame) -> pd.DataFrame:
+    return df[df["label"] != JUNK_LABEL]
+
+
+def cls_str(idx: int) -> str:
+    return f"cls_{idx}"
+
+
+def cat_cls_str(class_id: int) -> str:
+    return f"cat_cls_{class_id}"
+
+
+MODEL_FOLDER_PATH = "model"

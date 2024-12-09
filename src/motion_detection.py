@@ -110,6 +110,8 @@ def bounding_box_clusterer(
     cluster_distance_threshold: float,
     min_final_cluster_size: int,
     min_final_cluster_density: float,
+    min_final_bounding_box_length: int,
+    pad_bounding_box_px: int,
 ) -> list[ClusterBoundingBox]:
     """Clusters foreground pixels in frame. Involves 3 steps:
     1. Find connected components and their boundaries.
@@ -125,6 +127,9 @@ def bounding_box_clusterer(
                                       more noise filtering
         min_final_cluster_density (float): how dense (ratio of foreground pixels to size) bounding boxes have
                                            to be in order to be considered. Another filter parameter.
+        min_final_bounding_box_length (int): minimum length of a bounding box along each axis.
+        pad_bounding_box (int): most bounding boxes are very tight and tend to trim the edges. This
+                                pads each side of the box by the corresponding number of pixels.
 
     Returns:
         list[ClusterBoundingBox]: merged clusters
@@ -147,17 +152,24 @@ def bounding_box_clusterer(
     final_clusters = merge_cumulatively(cluster_bounding_boxes, cluster_distance_threshold)
 
     # Filter out any final clusters with a too low density or overall size
-    final_clusters = [
+    filtered_clusters = [
         b
         for b in final_clusters
         if b.size / ((b.x_max - b.x_min) * (b.y_max - b.y_min)) >= min_final_cluster_density
         and b.size >= min_final_cluster_size
+        and (b.x_max - b.x_min) >= min_final_bounding_box_length
+        and (b.y_max - b.y_min) >= min_final_bounding_box_length
     ]
 
-    return final_clusters
+    # Pad bounding boxes on each side a little
+    y_lim, x_lim = frame.shape
+    for b in final_clusters:
+        b.x_min = max(b.x_min - pad_bounding_box_px, 0)
+        b.y_min = max(b.y_min - pad_bounding_box_px, 0)
+        b.x_max = min(b.x_max + pad_bounding_box_px, x_lim - 1)
+        b.y_max = min(b.y_max + pad_bounding_box_px, y_lim - 1)
 
-
-# TODO doc
+    return filtered_clusters
 
 
 def detect_motion(
@@ -200,6 +212,7 @@ def detect_motion(
     motion_px = np.stack(np.where(f == 255)).T
 
     clusters = []
+    logger.debug(f"Motion pixels: {len(motion_px)} vs. required {sufficient_motion_thresh}")
     # Only run bounding boxing if there are enough active pixels.
     if len(motion_px) > sufficient_motion_thresh:
 

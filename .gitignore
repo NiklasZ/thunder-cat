@@ -3,5 +3,9 @@
 .vscode
 NOTES.md
 __pycache__
-data
+data/*
 tmp
+
+# Keep sound data on repo for convenience
+!data/sound
+!data/sound/*

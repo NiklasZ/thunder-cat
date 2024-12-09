@@ -1,0 +1,1 @@
+{"training_parameters": {"n_estimators": 271, "learning_rate": 0.278031662803325, "num_leaves": 83, "max_depth": 10, "classification_threshold": 0.9135605700534715}, "confusion_matrix": [[2670, 2], [6, 230]]}

@@ -1,5 +1,6 @@
 import threading
 from typing import Optional
+
 import sounddevice as sd
 import soundfile as sf
 
@@ -31,7 +32,7 @@ def play_thread(file_name: str, device_id: Optional[int] = None) -> None:
             playing = False  # Reset playing to False when playback ends
 
 
-def play(file_name: str, device_id: Optional[int] = None) -> None:
+def play_sound(file_name: str, device_id: Optional[int] = None) -> None:
     """Play audio in a thread."""
     playback_thread = threading.Thread(target=play_thread, args=(file_name, device_id))
     playback_thread.start()
@@ -42,3 +43,11 @@ def is_playing() -> bool:
     with playing_lock:
         return playing
 
+
+def get_device_id_matching(name: str) -> int:
+    devices = sd.query_devices()
+    for idx, device in enumerate(devices):
+        if name in device["name"]:
+            return idx
+
+    raise Exception(f"Could not find any audio device matching '{name}'\nFound: {devices}")

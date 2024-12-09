@@ -1,6 +1,8 @@
 import os
+from dataclasses import dataclass
 from datetime import datetime
 
+import numpy as np
 import torch
 from cv2.typing import MatLike
 from PIL import Image
@@ -8,20 +10,43 @@ from torchvision import models
 from torchvision.io import read_image
 
 from configuration import configure_logger, to_timestamp
+from imagenet_classes import CAT_CLASSES, MAX_CLASS_RANK
 from motion_detection import ClusterBoundingBox
 
 torch.backends.quantized.engine = "qnnpack"
 
-model = None
+imagenet_model = None
 preprocess = None
 logger = configure_logger()
 
 
-def classify_cat(
+@dataclass(order=True)
+class ClassificationResult:
+    cat_rankings: dict[int, int]  # Ranking of cat-specific classes
+    top_20_classes: list[int]  # Ranking of top-20 classes
+    class_scores: np.ndarray  # Raw score for each class
+
+
+def classify_cat_multiclass(
     data: list[tuple[MatLike, list[ClusterBoundingBox]]],
+    classification_idx: int,
     save_classifier_frames: bool,
     classifier_frame_save_folder=os.path.join("data", "log"),
-) -> bool:
+    classifier_frame_prefix: str | None = None,
+) -> ClassificationResult:
+    """Selects the most promising frame and bounding box in the input
+    and then preprocesses it for a torch image classification model.
+
+    Args:
+        data (list[tuple[MatLike, list[ClusterBoundingBox]]]): frames and bounding boxes to use
+        classification_idx (int): index of which classification it is in the video. Used only for logging
+        save_classifier_frames (bool): whether to save the chosen frame and bounding box
+        classifier_frame_save_folder (_type_, optional): _description_. Defaults to os.path.join("data", "log").
+        classifier_frame_prefix (str | None, optional): _description_. Defaults to None.
+
+    Returns:
+        ClassificationResult: properties of classification
+    """
     # Pick frame with the most motion to classify
     best_frame_idx = 0
     best_box_idx = 0
@@ -37,48 +62,55 @@ def classify_cat(
     chosen_box = boxes[best_box_idx]
 
     boxed_frame = chosen_frame[chosen_box.y_min : chosen_box.y_max, chosen_box.x_min : chosen_box.x_max]
-    s = boxed_frame.shape
+    boxed_frame = boxed_frame[:, :, [2, 1, 0]]  # Swap colour channels from BGR -> RGB
 
-    # TODO make controllable
     if save_classifier_frames:
         current_time = datetime.now()
         im = Image.fromarray(boxed_frame)
-        path_str = os.path.join(classifier_frame_save_folder, f"{to_timestamp(current_time)}_classifier_frame.png")
+        file_prefix = classifier_frame_prefix or to_timestamp(current_time)
+        suffix = "classifier_frame.png"
+        path_str = os.path.join(classifier_frame_save_folder, f"{file_prefix}_{classification_idx}_{suffix}")
         im.save(path_str)
 
     t = torch.tensor(boxed_frame).permute(2, 0, 1)  # Rearrange to C, H, W format
     t = t.unsqueeze(0)  # Add batch dimension, changing to B, C, H, W format
-    # TODO return something
-    classify(t)
+    return classify_imagenet(t)
 
 
-# TODO doc
-def classify(frames: torch.tensor) -> list[tuple[int, int]]:
-    global model
+def classify_imagenet(frame: torch.tensor) -> ClassificationResult:
+    """Classifies provided frame using a model trained on imagenet,
+    meaning it returns scores for the corresponding classes.
+
+    Args:
+        frame (torch.tensor): Should be shape [1, C, H, W]
+
+    Returns:
+        ClassificationResult: properties of classification
+    """
+    global imagenet_model
     global preprocess
 
-    if not model:
-        model = models.quantization.mobilenet_v3_large(
+    assert frame.shape[0] == 1, f"Expected batch size to be one. Given tensor shape: {frame.shape}"
+
+    if not imagenet_model:
+        imagenet_model = models.quantization.mobilenet_v3_large(
             pretrained=True, quantize=True, weights=models.quantization.MobileNet_V3_Large_QuantizedWeights.DEFAULT
         )
         preprocess = models.quantization.MobileNet_V3_Large_QuantizedWeights.DEFAULT.transforms()
 
-    model.eval()
-    torch.jit.script(model)
-
-    cat_classes = {281, 282, 283, 284, 285}
+        imagenet_model = torch.compile(imagenet_model)
 
     with torch.no_grad():
-        model_input = preprocess(frames)
-        out = model(model_input).flatten()  # TODO we kind assume a batch size of 1
+        model_input = preprocess(frame)
+        out = imagenet_model(model_input).flatten()
 
         ranked_classes = torch.argsort(out, descending=True)
         ranked_classes = [int(r) for r in ranked_classes]
-
-        cat_rankings = [(i, cls) for i, cls in enumerate(ranked_classes) if cls in cat_classes]
-        max_rank = len(ranked_classes)
-        rank_strs = ", ".join([f"{cls}:{i}/{max_rank}" for i, cls in cat_rankings])
+        top_20_classes = ranked_classes[:20]
+        cat_rankings = {cls: i for i, cls in enumerate(ranked_classes) if cls in CAT_CLASSES}
+        rank_strs = ", ".join([f"{cls}:{i}/{MAX_CLASS_RANK}" for cls, i in cat_rankings.items()])
         logger.debug(f"Cat Class rankings: {rank_strs}")
+        return ClassificationResult(cat_rankings, top_20_classes, out.numpy())
 
 
 if __name__ == "__main__":
@@ -122,4 +154,4 @@ if __name__ == "__main__":
     # debug_numpy = debug_tensor.squeeze().permute(1,2,0).numpy()
     # im = Image.fromarray(debug_numpy)
     # debug_arr = np.asarray(im)
-    classify(t)
+    classify_imagenet(t)
