@@ -33,7 +33,7 @@ column_dtypes = (
     {
         "file_name": pd.StringDtype(),  # source video
         "frame_idx": pd.Int64Dtype(),  # frame idx from video
-        "classification_idx": pd.Int64Dtype(),  # classification idx from video
+        "model_name": pd.StringDtype(),  # name of imagenet model
     }
     | {cat_cls_str(c): pd.Int64Dtype() for c in CAT_CLASSES}  # Cat class rankings
     | {  # Label denoting whether the entry is usable for training (mostly generated, some manual)
@@ -72,16 +72,18 @@ def save_csv(df: pd.DataFrame, csv_path: str):
 
 class VideoStatGatherer(VideoTarget):
     def __init__(self):
-        self.frame_counter = 0
         # {frame_idx: {cat_class: rank}}
         self.cat_rankings = {}
         self.class_logits = {}
+        self.model_name = None
 
     def write(self, frame: MatLike, annotations: dict | None = None):
         if annotations and "cat_rankings" in annotations:
-            self.cat_rankings[self.frame_counter] = annotations["cat_rankings"]
-            self.class_logits[self.frame_counter] = annotations["class_logits"]
-        self.frame_counter += 1
+            self.model_name = annotations["model_name"]
+            for i in range(len(annotations["cat_rankings"])):
+                f_idx = annotations["frame_indices"][i]
+                self.cat_rankings[f_idx] = annotations["cat_rankings"][i]
+                self.class_logits[f_idx] = annotations["class_logits"][i]
 
     def close(self):
         return
@@ -141,18 +143,25 @@ def get_video_stats(video_dir: str, video_folder: str, analysis_dir: str) -> pd.
             [vsg],
             stop_recording_after=thundercat_config["stop_recording_after"],
             min_consecutive_motion_frames=thundercat_config["min_consecutive_motion_frames"],
-            label_video=thundercat_config["label_video"],
             background_subtractor_kwargs=background_subtractor_config,
             motion_detection_config=motion_detection_config,
             classifier_frame_buffer_size=thundercat_config["classifier_frame_buffer_size"],
             classifier_config=updated_classifier_config,
+            binary_classifier_path=thundercat_config["binary_classifier_path"],
+            sound_device_name=thundercat_config["sound_device_name"],
+            sound_device_volume=thundercat_config["sound_device_volume"],
+            imagenet_classifier_name=thundercat_config["imagenet_classifier_name"],
+            buffer_size=thundercat_config["buffer_size"],
+            toggle_sound=False,
         )
 
-        for classification_idx, ((frame_idx, class_rankings), class_logits) in enumerate(
-            zip(vsg.cat_rankings.items(), vsg.class_logits.values())
-        ):
+        for (frame_idx, class_rankings), class_logits in zip(vsg.cat_rankings.items(), vsg.class_logits.values()):
             row = (
-                {"file_name": file_name, "frame_idx": frame_idx, "classification_idx": classification_idx}
+                {
+                    "file_name": file_name,
+                    "frame_idx": frame_idx,
+                    "model_name": vsg.model_name,
+                }
                 | {cat_cls_str(c): r for c, r in class_rankings.items()}
                 | {cls_str(i): l for i, l in enumerate(class_logits)}
             )
@@ -183,13 +192,14 @@ def plot_class_histograms(
     f_other_df = filter_junk(other_df)
 
     for c in CAT_CLASSES:
+        model_name = f_day_cat_df["model_name"].iloc[0]
         plt.hist(f_night_cat_df[cat_cls_str(c)], bins=200, alpha=0.5, label="night_cat", color="blue")
         plt.hist(f_day_cat_df[cat_cls_str(c)], bins=200, alpha=0.5, label="day_cat", color="orange")
         plt.hist(f_other_df[cat_cls_str(c)], bins=200, alpha=0.5, label="other", color="purple")
 
         plt.xlabel("Rank")
         plt.ylabel("Counts")
-        plt.title(f"Classification Rankings for Cat Class {c}")
+        plt.title(f"Classification Rankings for Cat Class {c} - {model_name}")
         plt.legend()
 
         # Save the plot as an image file
@@ -307,8 +317,18 @@ def classify_videos(
 
     plot_class_histograms(day_cat_df, night_cat_df, other_df, analysis_dir)
 
-    logger.info("Training binary classifier...")
-    train_binary_classifier(combined_cat_df, other_df, false_pos_weight, false_neg_weight)
+    day_cat_outliers = (day_cat_df["label"] == "outlier").sum()
+    night_cat_outliers = (night_cat_df["label"] == "outlier").sum()
+    other_proximals = (other_df["label"] == "proximal").sum()
+
+    if day_cat_outliers or night_cat_outliers or other_proximals:
+        logger.info("Detected undetermined labels")
+        logger.info(f"{day_cat_outliers} outliers in day_cat_df")
+        logger.info(f"{night_cat_outliers} outliers in night_cat_df")
+        logger.info(f"{other_proximals} proximals in other_df")
+    else:
+        logger.info("Training binary classifier...")
+        train_binary_classifier(combined_cat_df, other_df, false_pos_weight, false_neg_weight)
 
 
 if __name__ == "__main__":
@@ -324,7 +344,7 @@ if __name__ == "__main__":
     other_dir = os.path.join(video_dir, other_folder)
 
     # Training parameters
-    false_pos_weight = 10
+    false_pos_weight = 25
     false_neg_weight = 1
 
     classify_videos(

@@ -1,0 +1,1 @@
+{"imagenet_classifier_name": "mobilenet_v4", "training_parameters": {"n_estimators": 141, "learning_rate": 0.2608993020980031, "num_leaves": 109, "max_depth": 14, "classification_threshold": 0.9986889841905932}, "confusion_matrix": [[10688, 1], [12, 906]]}

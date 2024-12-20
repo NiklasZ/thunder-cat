@@ -78,8 +78,15 @@ def configure_video_source(source: FileSource | CameraSource) -> cv.VideoCapture
         cap.set(cv.CAP_PROP_FRAME_WIDTH, width_px)
         cap.set(cv.CAP_PROP_FRAME_HEIGHT, height_px)
 
+        cap.set(cv.CAP_PROP_FPS, source.framerate)
+
+        # Check if the setting was successful
+        if not cap.get(cv.CAP_PROP_FPS) == source.framerate:
+            raise Exception(f"Unable to set FPS to the desired value {source.framerate}")
+
         fourcc = cv.VideoWriter_fourcc(*source.video_format)
         cap.set(cv.CAP_PROP_FOURCC, fourcc)
+        cap.set(cv.CAP_PROP_BUFFERSIZE, 5)
         logger.info(f"Opening camera: {source.device_name}")
     elif isinstance(source, FileSource):
         cap = cv.VideoCapture(source.file_path)

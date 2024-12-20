@@ -9,3 +9,5 @@ tmp
 # Keep sound data on repo for convenience
 !data/sound
 !data/sound/*
+model/faster_vit_0_224.onnx
+model/mobilenetv4_hybrid_medium.e200_r256_in12k_ft_in1k	.onnx

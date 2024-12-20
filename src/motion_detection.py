@@ -138,10 +138,16 @@ def bounding_box_clusterer(
     # Get directly connected components and their bounding boxes
     _, _, comp_stats, _ = cv.connectedComponentsWithStats(frame, connectivity=8)
 
+    # It seems that once in a random while, OpenCV will return a nonsense coordinate, which results
+    # in an error like "index 2147483647 is out of bounds for axis 0 with size 480"
+    # As a safety, we filter for the coordinates fitting in the frame here.
+    f_w, f_h = frame.shape
+    mask = (comp_stats[:, 0] >= 0) & (comp_stats[:, 0] < f_h) & (comp_stats[:, 1] >= 0) & (comp_stats[:, 1] < f_w)
+    comp_stats = comp_stats[mask]
     # Filter out background components
     # NOTE: OpenCV returns the indices in reverse order (i.e x, y while the input is y,x)
-    comp_stats = [c for c in comp_stats if frame[c[1], c[0]] != 0]
-
+    mask = frame[comp_stats[:, 1], comp_stats[:, 0]] != 0
+    comp_stats = comp_stats[mask]
     # Filter out too small components
     comp_stats = [c for c in comp_stats if c[4] < min_initial_cluster_size]
 
@@ -170,6 +176,15 @@ def bounding_box_clusterer(
         b.y_max = min(b.y_max + pad_bounding_box_px, y_lim - 1)
 
     return filtered_clusters
+
+
+def get_foreground_pixels(
+    frame: MatLike, mask_pixels_below: int, subtractor: BackgroundSubtractorMOG2
+) -> tuple[MatLike, int]:
+    f = subtractor.apply(frame)
+    _, f = cv.threshold(f, mask_pixels_below, 255, cv.THRESH_BINARY)
+    num_motion_px = cv.countNonZero(f)
+    return f, num_motion_px
 
 
 def detect_motion(
@@ -201,20 +216,18 @@ def detect_motion(
     """
 
     # Get foreground active pixels
-    f = subtractor.apply(frame)
-    _, f = cv.threshold(f, mask_pixels_below, 255, cv.THRESH_BINARY)
+    f, num_motion_px = get_foreground_pixels(frame, mask_pixels_below, subtractor)
 
+    # Useful for debugging
     if show_background_sub_output:
         output_frame = cv.merge((f, f, f))
     else:
         output_frame = frame
 
-    motion_px = np.stack(np.where(f == 255)).T
-
     clusters = []
-    logger.debug(f"Motion pixels: {len(motion_px)} vs. required {sufficient_motion_thresh}")
+    logger.debug(f"Motion pixels: {num_motion_px} vs. required {sufficient_motion_thresh}")
     # Only run bounding boxing if there are enough active pixels.
-    if len(motion_px) > sufficient_motion_thresh:
+    if num_motion_px > sufficient_motion_thresh:
 
         # Cluster the pixels and get bounding boxes around them.
         clusters = bounding_box_clusterer(f, **clustering_config)
