@@ -40,7 +40,7 @@ thundercat_config = {
     "stop_recording_after": 30 * 10,
     "classifier_frame_buffer_size": 30,
     "sound_device_name": "T60",
-    "sound_device_volume": 100,  # from 0 to 100%
+    "initial_sound_device_volume": 100,  # from 0 to 100%
     "imagenet_classifier_name": "mobilenet_v4",  # "faster_vit_0", #,
     "binary_classifier_config_path": "model/2024_12_18-07_19_36_parameters.json",
     "binary_classifier_path": "model/2024_12_18-07_19_36_binary_cat_classifier.pkl",
@@ -86,13 +86,15 @@ def thundercat(
     binary_classifier_config_path: str,
     imagenet_classifier_name: str,
     sound_device_name: str,
-    sound_device_volume: int,
+    initial_sound_device_volume: int,
     toggle_sound: bool,
     buffer_size: int,
 ):
     cap = configure_video_source(source)
     start_time = time.time()
     stop_event = None
+    last_sound_play_time = 0
+    current_volume = initial_sound_device_volume
 
     # Check source
     if not cap.isOpened():
@@ -110,7 +112,7 @@ def thundercat(
 
         # Configure audio device
         sound_device_id = get_device_id_matching(sound_device_name)
-        subprocess.run(f"amixer set Master {sound_device_volume}%", shell=True, capture_output=True)
+        subprocess.run(f"amixer set Master {initial_sound_device_volume}%", shell=True, capture_output=True)
 
         binary_classifier_config = load_binary_classifier_config(
             binary_classifier_config_path, imagenet_classifier_name
@@ -128,10 +130,6 @@ def thundercat(
             cap, buffer_size, should_block
         )
 
-        # TODO remove debug metrics
-        time_spent_motion_detection = 0
-        time_spent_classifier = 0
-
         current_time = time.time()
         while not no_more_frames__event.is_set() or frame_buffer.qsize():
             frame = frame_buffer.get(timeout=60)
@@ -143,9 +141,7 @@ def thundercat(
                 current_time = new_time
 
             logger.debug(f"Frame {frame_counter}")
-            t0 = time.time()
             frame, bounding_boxes = detect_motion(frame, back_sub, **motion_detection_config)
-            time_spent_motion_detection += time.time() - t0
             change_detected = bool(len(bounding_boxes))
 
             if change_detected:
@@ -175,7 +171,6 @@ def thundercat(
                     annotation["bounding_boxes"] = str(bounding_boxes)
 
                 # After enough frames are gathered, classify
-                t0 = time.time()
                 if len(classifier_frames) == classifier_frame_buffer_size:
                     cls_result = classify_cat_multiclass(classifier_frames, **classifier_config)
                     raw_scores = [c.class_scores for c in cls_result]
@@ -187,10 +182,17 @@ def thundercat(
                     if all(is_cat):
                         logger.debug("Cat detected!")
                         if toggle_sound and not is_playing():
-                            # TODO gradually increase sound for consecutive calls
+                            current_time = time.time()
+                            if current_time - last_sound_play_time <= 15:
+                                current_volume = min(current_volume + 10, 100)
+                            else:
+                                current_volume = initial_sound_device_volume
+                            last_sound_play_time = current_time
+
+                            subprocess.run(f"amixer set Master {current_volume}%", shell=True, capture_output=True)
                             sound_files = sorted(glob.glob(os.path.join(SOUND_FOLDER, "*.wav")))
                             idx = random.randint(0, len(sound_files) - 1)
-                            logger.info(f"Playing sound file {sound_files[idx]}")
+                            logger.info(f"Playing sound file {sound_files[idx]} at volume {current_volume}%")
                             play_sound(sound_files[idx], sound_device_id)
 
                     classifier_frames = []
@@ -205,7 +207,6 @@ def thundercat(
                         "class_logits": [c.class_scores.tolist() for c in cls_result],
                     }
 
-                time_spent_classifier += time.time() - t0
                 for t in targets:
                     t.write(frame, annotation)
                     recording_frame_counter += 1
@@ -216,11 +217,10 @@ def thundercat(
                     t.close()
                 initial_motion_detected = False
                 recording_frame_counter = 0
+                classifier_frames = []
 
             frame_counter += 1
 
-        print(f"Motion_detection: {time_spent_motion_detection:.2f}")
-        print(f"Classifier: {time_spent_classifier:.2f}")
     except Exception as e:
         logger.error("Stream interrupted.")
         logger.error(f"Error: {e}")
@@ -299,7 +299,7 @@ if __name__ == "__main__":
         binary_classifier_path=thundercat_config["binary_classifier_path"],
         binary_classifier_config_path=thundercat_config["binary_classifier_config_path"],
         sound_device_name=thundercat_config["sound_device_name"],
-        sound_device_volume=thundercat_config["sound_device_volume"],
+        initial_sound_device_volume=thundercat_config["initial_sound_device_volume"],
         toggle_sound=thundercat_config["toggle_sound"],
         buffer_size=thundercat_config["buffer_size"],
     )
