@@ -135,7 +135,7 @@ class VideoLogger(VideoTarget):
                 "23",  # Quality (lower is better, 18–28 range)
                 video_path,
             ]
-            self.video_writer = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.video_writer = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
 
             annotations_path = os.path.join(self.logging_dir, f"{self.last_frame_written_str}.log")
             self.annotation_writer = open(annotations_path, "w")

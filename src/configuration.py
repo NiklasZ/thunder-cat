@@ -56,7 +56,6 @@ class CameraSource:
     video_format: str
     width_px: int
     height_px: int
-    framerate: int
 
 
 @dataclass
@@ -77,12 +76,6 @@ def configure_video_source(source: FileSource | CameraSource) -> cv.VideoCapture
         cap = cv.VideoCapture(device_idx)
         cap.set(cv.CAP_PROP_FRAME_WIDTH, width_px)
         cap.set(cv.CAP_PROP_FRAME_HEIGHT, height_px)
-
-        cap.set(cv.CAP_PROP_FPS, source.framerate)
-
-        # Check if the setting was successful
-        if not cap.get(cv.CAP_PROP_FPS) == source.framerate:
-            raise Exception(f"Unable to set FPS to the desired value {source.framerate}")
 
         fourcc = cv.VideoWriter_fourcc(*source.video_format)
         cap.set(cv.CAP_PROP_FOURCC, fourcc)

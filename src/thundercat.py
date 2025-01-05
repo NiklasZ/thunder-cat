@@ -36,12 +36,12 @@ thundercat_config = {
     "fps": 30,
     "buffer_size": 30 * 60,
     "label_video": False,
-    "min_consecutive_motion_frames": 5,
+    "min_consecutive_motion_frames": 3,
     "stop_recording_after": 30 * 10,
     "classifier_frame_buffer_size": 30,
     "sound_device_name": "T60",
-    "initial_sound_device_volume": 100,  # from 0 to 100%
-    "imagenet_classifier_name": "mobilenet_v4",  # "faster_vit_0", #,
+    "initial_sound_device_volume": 70,  # from 0 to 100%
+    "imagenet_classifier_name": "mobilenet_v4",
     "binary_classifier_config_path": "model/2024_12_18-07_19_36_parameters.json",
     "binary_classifier_path": "model/2024_12_18-07_19_36_binary_cat_classifier.pkl",
     "toggle_sound": True,
@@ -57,15 +57,15 @@ clustering_config = {
     "min_initial_cluster_size": 3,
     "cluster_distance_threshold": 50,
     "pad_bounding_box_px": 5,
-    "min_final_cluster_size": 30,
+    "min_final_cluster_size": 25,
     "min_final_cluster_density": 0.002,
-    "min_final_bounding_box_length": 60,
+    "min_final_bounding_box_length": 50,
 }
 
 motion_detection_config = {
     "mask_pixels_below": 127,
     "draw_bounding_boxes": thundercat_config["label_video"],
-    "sufficient_motion_thresh": 50,
+    "sufficient_motion_thresh": 40,
     "show_background_sub_output": False,
     "clustering_config": clustering_config,
 }
@@ -102,6 +102,8 @@ def thundercat(
         exit()
 
     try:
+        # TODO consider saving the background subtractor state and the first k frames of the video
+        # that trigger it
         back_sub = cv.createBackgroundSubtractorMOG2(**background_subtractor_kwargs)
         frame_counter = 0
         recording_frame_counter = 0

@@ -1,0 +1,26 @@
+[Unit]
+Description=thundercat
+After=multi-user.target systemd-udev-trigger.service
+Requires=systemd-udev-trigger.service
+
+[Service]
+ExecStart=/bin/bash -c "source .envrc && /home/admin/Desktop/thunder-cat/.venv/bin/python src/thundercat.py"
+WorkingDirectory=/home/admin/Desktop/thunder-cat
+Restart=always
+RestartSec=5
+User=admin
+Group=admin
+Environment="PYTHONUNBUFFERED=1"
+
+# Ensure peripherals are fully initialized
+ExecStartPre=/bin/sleep 10
+# Optimized for multi-threaded programs
+CPUSchedulingPolicy=other
+CPUSchedulingPriority=0
+
+# Log standard output and errors
+StandardOutput=append:/var/log/thundercat.log
+StandardError=append:/var/log/thundercat_error.log
+
+[Install]
+WantedBy=multi-user.target
