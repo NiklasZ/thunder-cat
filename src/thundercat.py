@@ -33,7 +33,7 @@ logger = configure_logger()
 thundercat_config = {
     "width_px": 640,
     "height_px": 480,
-    "fps": 30,
+    "fps": 25,
     "buffer_size": 30 * 60,
     "label_video": False,
     "min_consecutive_motion_frames": 3,
@@ -89,6 +89,7 @@ def thundercat(
     initial_sound_device_volume: int,
     toggle_sound: bool,
     buffer_size: int,
+    fps: int,
 ):
     cap = configure_video_source(source)
     start_time = time.time()
@@ -128,8 +129,9 @@ def thundercat(
         should_block = isinstance(source, FileSource)
         # Have a thread buffer frames for us as we will have the occasional latency spike when we do
         # expensive opoerations like starting new videos or calling models
+        original_fps = cap.get(cv.CAP_PROP_FPS)
         frame_capture_thread, stop_event, no_more_frames__event, frame_buffer = create_frame_buffer_thread(
-            cap, buffer_size, should_block
+            cap, buffer_size, should_block, original_fps, fps
         )
 
         current_time = time.time()
@@ -272,12 +274,14 @@ if __name__ == "__main__":
     # Noise
     # source = FileSource("data/video/evaluation/other/2024_11_25-16_45_09.mp4")
 
+    # Doc example
+    # source = FileSource("doc/day_after_example.mp4")
+
     source = CameraSource(
         device_name="USB 2.0 Camera",
         video_format="MJPG",
         width_px=thundercat_config["width_px"],
         height_px=thundercat_config["height_px"],
-        framerate=thundercat_config["fps"],
     )
 
     targets = [
@@ -304,4 +308,5 @@ if __name__ == "__main__":
         initial_sound_device_volume=thundercat_config["initial_sound_device_volume"],
         toggle_sound=thundercat_config["toggle_sound"],
         buffer_size=thundercat_config["buffer_size"],
+        fps=thundercat_config["fps"],
     )
