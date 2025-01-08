@@ -1,15 +1,17 @@
 # thunder-cat
+This here is Lyra:
+<p align="center">
+  <img src="doc/lyra.jpg" alt="cat" style="max-width: 100%; width: 50%;"/>
+</p>
 
-**TODO**
-## Overview
-
-### How it works
-**TODO**
+She is a cute and very curious cat who likes to explore every space. That unfortunately also includes our kitchen counters, which poses both a health hazard to herself and us. After trying conventional deterrents (tape, water gun, etc.) and none of them worked, we have developed a computer-vision and sound-based deterrent. In essence, we detect whether a cat appears in a camera and play sounds (e.g thunder) it doesn't like so it learns to avoid the space.
 
 ### Hardware Setup
-The hardware is composed as follows:
+The hardware used is composed as follows:
 
-**add photo here**
+<p align="center">
+  <img src="doc/hardware_setup.jpg" alt="Parts" style="max-width: 100%; width: 50%;"/>
+</p>
 
 Where the parts are:
 - [**Raspberry Pi 5, 8GB**](https://www.digikey.ch/de/products/detail/raspberry-pi/SC1112/21658257?so=89455186&content=productdetail_CH) - the setup uses ~4.5GB, so the smaller variant will start using the swap space
@@ -18,6 +20,27 @@ Where the parts are:
 - [**52Pi Ice Tower Plus for Raspberry Pi 5, Aluminum Heatsink**](https://52pi.com/products/ice-tower-plus-for-raspberry-pi-5-for-raspberry-pi-5) - haven't done a detailed temperature analysis, but this did lower the operating temperature from 75°C -> 50°C. Probably don't need a cooler this powerful, but it is nice and quiet.
 - [**Creative T60 Speakers**](https://en.creative.com/p/speakers/creative-t60) - overkill, some cheaper speakers would do fine, but I already
 had them and they're good speakers.
+
+### How it works
+There are 2 main components to the implementation: identifying objects and classifying them as a "cat" or something "other". See below diagram for the two steps:
+
+<p align="center">
+  <img src="doc/overview_diagram.png" alt="software overview" style="max-width: 100%; width: 80%;"/>
+</p>
+
+#### Object Detection
+We use a background subtractor to learn the distribution of the pixels in the video feed (important, as the camera is noisy) and the subtract each new frame to get the pixels that have changed. When an object (i.e the cat) moves, this results in pixel clusters that differ from the background. We can then detect the clusters and merge them to get a bounding box, which we use to get the moving object. This approach is not perfectly accurate, but it is very efficient.
+
+### Classification
+Once we have collected some $n$ frames, we sample the $k$ ones with the most amount of motion (as more motion lets us draw more accurate boxes). We then pass these into a model pre-trained on the 1K [imagenet dataset](https://paperswithcode.com/dataset/imagenet) and get back a tensor of $(k, 1000)$ class weights.
+
+Now imagenet does have 5 classes for housecats, so it is quite straightforward to detect a "cat" based on probability of those. However, more difficult is capturing the "other" class  (everything that is not a cat) and relying just on the "cat" class probabilities. Doing so leads to _false positives_, such as confusing human hair or very fuzzy sweaters for a cat. One approach could be to replace the imagenet model's classification head with one that only has those 2 classes and fine-tune on either the original imagenet data or our own. This is however, quite computive intensive to do and even just running inference on a raspberry pi is slow.
+
+Instead we opted to treat the $(k, 1000)$ imagenet class weights as features of their own and trained a [Light-Gradient Boosting Machine (LGBM)](https://lightgbm.readthedocs.io/en/stable/) on a few hours of house-cat and non-cat data. This turned out to be fast enough, that we could even perform hyper-parameter tuning such that with $k$-fold validation, the model has a 0.01% false positive rate and a 1.3% false negative rate (we prioritised minimising false positives).
+
+<p align="center">
+  <img src="doc/confusion_matrix.png" alt="software overview" style="max-width: 100%; width: 50%;"/>
+</p>
 
 ### Performance
 As we are using a CPU-only setup, it is worthwhile to inspect the performance. The below flamechart is from classifying a 5min video recorded using the camera. We can observe that the main performance bottleneck is from the motion capture OpenCV operations which needed to be run on every frame. These already run some optimised C++ code underneath, so there's not many easy optimisations that would not require rewriting most of the code. Even porting everything to C++ will probably not improve performance substantially and the code already uses all threads, so 480p at 30FPS is likely the limit of what the raspberry pi can manage. Raising the resolution to 720p already lowers the FPS to 15, so it is not advisable.
