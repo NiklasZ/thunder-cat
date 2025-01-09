@@ -43,7 +43,10 @@ Instead we opted to treat the $(k, 1000)$ imagenet class weights as features of 
 </p>
 
 ### Demo
-![Demo GIF](https://github.com/NiklasZ/thunder-cat/blob/main/demo.gif)
+
+<p align="center">
+  <img src="demo.gif" alt="software overview" style="max-width: 100%; width: 50%;"/>
+</p>
 
 ### Performance
 As we are using a CPU-only setup, it is worthwhile to inspect the performance. The below flamechart is from classifying a 5min video recorded using the camera. We can observe that the main performance bottleneck is from the motion capture OpenCV operations which needed to be run on every frame. These already run some optimised C++ code underneath, so there's not many easy optimisations that would not require rewriting most of the code. Even porting everything to C++ will probably not improve performance substantially and the code already uses all threads, so 480p at 30FPS is likely the limit of what the raspberry pi can manage. Raising the resolution to 720p already lowers the FPS to 15, so it is not advisable.
