@@ -43,7 +43,7 @@ Instead we opted to treat the $(k, 1000)$ imagenet class weights as features of 
 </p>
 
 ### Demo
-
+Here is an example recording of the camera recognising Lyra and playing sounds to deter her.
 <p align="center">
   <img src="demo.gif" alt="software overview" style="max-width: 100%; width: 50%;"/>
 </p>
