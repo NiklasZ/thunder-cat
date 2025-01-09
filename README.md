@@ -31,7 +31,7 @@ There are 2 main components to the implementation: identifying objects and class
 #### Object Detection
 We use a background subtractor to learn the distribution of the pixels in the video feed (important, as the camera is noisy) and the subtract each new frame to get the pixels that have changed. When an object (i.e the cat) moves, this results in pixel clusters that differ from the background. We can then detect the clusters and merge them to get a bounding box, which we use to get the moving object. This approach is not perfectly accurate, but it is very efficient.
 
-### Classification
+#### Classification
 Once we have collected some $n$ frames, we sample the $k$ ones with the most amount of motion (as more motion lets us draw more accurate boxes). We then pass these into a model pre-trained on the 1K [imagenet dataset](https://paperswithcode.com/dataset/imagenet) and get back a tensor of $(k, 1000)$ class weights.
 
 Now imagenet does have 5 classes for housecats, so it is quite straightforward to detect a "cat" based on probability of those. However, more difficult is capturing the "other" class  (everything that is not a cat) and relying just on the "cat" class probabilities. Doing so leads to _false positives_, such as confusing human hair or very fuzzy sweaters for a cat. One approach could be to replace the imagenet model's classification head with one that only has those 2 classes and fine-tune on either the original imagenet data or our own. This is however, quite computationally intensive to do and even just running inference on a raspberry pi is slow.
@@ -41,6 +41,12 @@ Instead we opted to treat the $(k, 1000)$ imagenet class weights as features of 
 <p align="center">
   <img src="doc/confusion_matrix.png" alt="software overview" style="max-width: 100%; width: 50%;"/>
 </p>
+
+### Demo
+<video width="640" height="360" controls>
+  <source src="doc/day_after_example.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
 
 ### Performance
 As we are using a CPU-only setup, it is worthwhile to inspect the performance. The below flamechart is from classifying a 5min video recorded using the camera. We can observe that the main performance bottleneck is from the motion capture OpenCV operations which needed to be run on every frame. These already run some optimised C++ code underneath, so there's not many easy optimisations that would not require rewriting most of the code. Even porting everything to C++ will probably not improve performance substantially and the code already uses all threads, so 480p at 30FPS is likely the limit of what the raspberry pi can manage. Raising the resolution to 720p already lowers the FPS to 15, so it is not advisable.
