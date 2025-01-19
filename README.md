@@ -15,7 +15,7 @@ The hardware used is composed as follows:
 
 Where the parts are:
 - [**Raspberry Pi 5, 8GB**](https://www.digikey.ch/de/products/detail/raspberry-pi/SC1112/21658257?so=89455186&content=productdetail_CH) - the setup uses ~4.5GB, so the smaller variant will start using the swap space
-- [**27 USB-C PSU**](https://www.digikey.ch/de/products/detail/raspberry-pi/SC1407/21658269?so=89455186&content=productdetail_CH)
+- [**27W USB-C PSU**](https://www.digikey.ch/de/products/detail/raspberry-pi/SC1407/21658269?so=89455186&content=productdetail_CH)
 - [**Arducam 2MP IMX462 Day and IR Night Vision USB Camera with Metal Case**](https://www.arducam.com/product/arducam-2mp-imx462-day-and-ir-night-vision-usb-camera-with-metal-case/) - would probably not buy again. It was easy to use and functioned at night, but the images were very noisy and would occasionally throw off the background subtractor. No amount of tweaking seemed to make this fully go away.
 - [**52Pi Ice Tower Plus for Raspberry Pi 5, Aluminum Heatsink**](https://52pi.com/products/ice-tower-plus-for-raspberry-pi-5-for-raspberry-pi-5) - haven't done a detailed temperature analysis, but this did lower the operating temperature from 75°C -> 50°C. Probably don't need a cooler this powerful, but it is nice and quiet.
 - [**Creative T60 Speakers**](https://en.creative.com/p/speakers/creative-t60) - overkill, some cheaper speakers would do fine, but I already
