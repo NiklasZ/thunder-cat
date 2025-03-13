@@ -77,6 +77,10 @@ It is also possible to train the LGBM classifier using the `analysis.py`, which 
 
 - ```python ./src/analysis.py```
 
+To view when the classifier detected a cat in the logs, run:
+
+- ```python src/log_checker.py```
+
 ### Streaming to another device
 By default, the output of `thundercat.py` are video and log files in `data/log`. It is also possible to stream the video to another device though using the instructions below.
 1. Determine the host IP address (e.g `ifconfig`) and a free port and assign them to Env variables `HOST_IP` and `HOST_PORT` on the device side.
