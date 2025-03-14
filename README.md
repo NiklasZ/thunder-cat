@@ -62,11 +62,13 @@ downstream LGBM classifier, which at a sampling rate of roughly 1 in 10 frames c
 
 ## Installation
 1. Install Python 3.11.*.
-2. Install linux video utiliy devices: `sudo apt install v4l-utils`.
-3. Create a virtual environment and `pip install -r requirements.txt`.
+2. Install linux video and audio utilities: `sudo apt install v4l-utils ffmpeg libportaudio2`.
+3. Create a virtual environment and `pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu`. The extra flag is to ensure we only install the CPU-version of PyTorch.
 4. Add the source code folder to `PYTHONPATH` (i.e `export PYTHONPATH="${PYTHONPATH}:${PWD}/src"`)
 5. Run `./generate_data_folders.sh` to create the folders to contain sound, video and logging data.
-6. (Optional) run `pre-commit install` to enable pre-commit hooks.
+6. (Optional) add your user to the `video` and `audio` groups: `sudo usermod -aG audio <user_name>` in case
+the speaker or camera are not visible without `sudo` privileges.
+7. (Optional) run `pre-commit install` to enable pre-commit hooks.
 
 ## Running
 By default, the application's main entrypoint is the `src/thundercat.py` file. It does not have a commandline and can simply be run with with:

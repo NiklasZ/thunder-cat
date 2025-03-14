@@ -45,6 +45,7 @@ thundercat_config = {
     "binary_classifier_config_path": "model/2024_12_18-07_19_36_parameters.json",
     "binary_classifier_path": "model/2024_12_18-07_19_36_binary_cat_classifier.pkl",
     "toggle_sound": True,
+    "max_log_size_gb": 50,
 }
 
 background_subtractor_config = {
@@ -290,6 +291,7 @@ if __name__ == "__main__":
             fps=thundercat_config["fps"],
             width_px=thundercat_config["width_px"],
             height_px=thundercat_config["height_px"],
+            max_log_size_gb=thundercat_config["max_log_size_gb"],
         ),
     ]
     thundercat(
