@@ -46,6 +46,10 @@ def to_timestamp(d: datetime) -> str:
     return d.strftime("%Y_%m_%d-%H_%M_%S")
 
 
+def to_date_str(d: datetime) -> str:
+    return d.strftime("%Y_%m_%d")
+
+
 def current_timestamp() -> str:
     return to_timestamp(datetime.now())
 

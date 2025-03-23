@@ -1,13 +1,22 @@
 import json
 import os
 import subprocess
+import threading
 import time
 from datetime import datetime, timedelta
 from io import TextIOWrapper
+from typing import List
 
+import numpy as np
 from cv2.typing import MatLike
 
-from configuration import VideoTarget, configure_logger, current_timestamp, to_timestamp
+from configuration import (
+    VideoTarget,
+    configure_logger,
+    current_timestamp,
+    to_date_str,
+    to_timestamp,
+)
 
 DEFAULT_VIDEO_LOG_DIR = "data/log"
 
@@ -41,12 +50,31 @@ def get_oldest_file(directory: str) -> str:
     return oldest_file
 
 
+def delete_empty_folders(directory: str):
+    """
+    Recursively deletes all empty folders in the specified directory.
+
+    Args:
+        directory (str): The path to the directory to clean.
+    """
+    # Walk the directory tree bottom-up
+    for dirpath, dirnames, filenames in os.walk(directory, topdown=False):
+        # If the directory is empty (no files and no subdirectories)
+        if not dirnames and not filenames:
+            try:
+                os.rmdir(dirpath)
+                print(f"Deleted empty folder: {dirpath}")
+            except OSError as e:
+                print(f"Error deleting folder {dirpath}: {e}")
+
+
 def manage_directory_size(directory: str, max_size_gb: float):
     """Checks whether given directory uses more than the specified maxmimum.
     If so, it deletes the oldest files until it is below the limit again.
     """
     current_size = check_current_memory_usage_gb(directory)
     logger.info(f"Current size of {directory}: {current_size:.2f}/{max_size_gb}GB")
+    delete_empty_folders(directory)
     while check_current_memory_usage_gb(directory) >= max_size_gb:
         oldest_file = get_oldest_file(directory)
         if oldest_file:
@@ -55,10 +83,45 @@ def manage_directory_size(directory: str, max_size_gb: float):
         else:
             logger.info("Found no files to delete!")
             break
-
     if current_size >= max_size_gb:
         current_size = check_current_memory_usage_gb(directory)
         logger.info(f"Size of {directory} after cleanup: {current_size:.2f}/{max_size_gb}GB")
+
+
+# We use FFMPEG directly to have more control over the encoder and use a less
+# memory intensive format.
+def generate_ffmpeg_cmd(width: int, height: int, fps: int, video_path: str) -> list[str]:
+    return [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pixel_format",
+        "bgr24",
+        "-video_size",
+        f"{width}x{height}",
+        "-framerate",
+        str(fps),
+        "-i",
+        "-",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        video_path,
+    ]
+
+
+def save_history_frames(width: int, height: int, fps: int, video_path: str, frames: List[MatLike]):
+    ffmpeg_cmd = generate_ffmpeg_cmd(width, height, fps, video_path)
+    process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+    for f in frames:
+        process.stdin.write(f.tobytes())
+
+    process.stdin.close()
+    process.wait()
 
 
 class VideoLogger(VideoTarget):
@@ -82,6 +145,7 @@ class VideoLogger(VideoTarget):
         self.height_px = height_px
         self.last_frame_written: datetime | None = None
         self.last_frame_written_str: str | None = None
+        self.base_log_path: str | None = None
         self.video_writer: subprocess.Popen[bytes] | None = None
         self.annotation_writer: TextIOWrapper | None = None
 
@@ -110,39 +174,35 @@ class VideoLogger(VideoTarget):
             self.frame_counter = 0
             self.last_frame_written = current_time
             self.last_frame_written_str = to_timestamp(self.last_frame_written)
-            video_path = os.path.join(self.logging_dir, f"{self.last_frame_written_str}.mp4")
+            date_str = to_date_str(self.last_frame_written)
+            self.base_log_path = os.path.join(self.logging_dir, date_str)
+            os.makedirs(self.base_log_path, exist_ok=True)
+            video_path = os.path.join(self.base_log_path, f"{self.last_frame_written_str}.mp4")
 
-            # We use FFMPEG directly to have more control over the encoder and use a less
-            # memory intensive format.
-            ffmpeg_cmd = [
-                "ffmpeg",
-                "-y",  # Overwrite output file if it exists
-                "-f",
-                "rawvideo",  # Input format
-                "-pixel_format",
-                "bgr24",  # Pixel format (OpenCV uses BGR)
-                "-video_size",
-                f"{self.width_px}x{self.height_px}",  # Frame size
-                "-framerate",
-                str(self.fps),  # Frame rate
-                "-i",
-                "-",  # Input from stdin
-                "-c:v",
-                "libx264",  # Use H.264 codec
-                "-preset",
-                "fast",  # Encoding speed/quality trade-off
-                "-crf",
-                "23",  # Quality (lower is better, 18–28 range)
-                video_path,
-            ]
+            ffmpeg_cmd = generate_ffmpeg_cmd(self.width_px, self.height_px, self.fps, video_path)
             self.video_writer = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
 
-            annotations_path = os.path.join(self.logging_dir, f"{self.last_frame_written_str}.log")
+            annotations_path = os.path.join(self.base_log_path, f"{self.last_frame_written_str}.log")
             self.annotation_writer = open(annotations_path, "w")
             annotations["start_time"] = self.last_frame_written_str
             logger.info(f"Started writing to new files: {annotations_path}, {video_path}")
 
         self.video_writer.stdin.write(frame.tobytes())
+
+        if "back_sub_history" in annotations:
+            history = annotations.pop("back_sub_history")
+            # Make a copy as we are passing this to a thread
+            history_cpy = [np.copy(arr) for arr in history]
+            history_path = os.path.join(self.base_log_path, f"{self.last_frame_written_str}_history.mp4")
+            logger.info(f"Saving background subtractor state to {history_path}")
+
+            thread = threading.Thread(
+                target=save_history_frames,
+                args=(self.width_px, self.height_px, self.fps, history_path, history_cpy),
+                daemon=True,
+            )
+            thread.start()
+
         if len(annotations):
             self.annotation_writer.write(f"Frame {self.frame_counter}: {json.dumps(annotations)}\n")
             self.annotation_writer.flush()

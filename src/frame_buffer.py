@@ -43,7 +43,7 @@ def capture_frames(
 
         try:
             # Check if the buffer is almost full and drop the frame if necessary
-            if frame_buffer.full():
+            if frame_buffer.full() and not blocking:
                 dropped_frame_counter += 1
                 if dropped_frame_counter % 100 == 0:
                     logger.warning(f"Dropped {dropped_frame_counter} frames.")

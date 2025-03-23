@@ -4,6 +4,7 @@ import random
 import subprocess
 import time
 import traceback
+from collections import deque
 
 import cv2 as cv
 from cv2.typing import MatLike
@@ -104,15 +105,32 @@ def thundercat(
         exit()
 
     try:
-        # TODO consider saving the background subtractor state and the first k frames of the video
-        # that trigger it
         back_sub = cv.createBackgroundSubtractorMOG2(**background_subtractor_kwargs)
+        back_sub_frame_history = deque(maxlen=background_subtractor_kwargs["history"] + min_consecutive_motion_frames)
+
+        # If available, populate the subtractor with existing video frames
+        if isinstance(source, FileSource):
+            back_sub_history_path = f"{os.path.splitext(source.file_path)[0]}_history.mp4"
+            if os.path.exists(back_sub_history_path):
+                history_source = FileSource(back_sub_history_path)
+                history_cap = configure_video_source(history_source)
+                logger.info("Populating subtractor with past file history...")
+                while True:
+                    ret, frame = history_cap.read()
+                    if not ret:
+                        break
+                    back_sub.apply(frame)
+                    back_sub_frame_history.append(frame)
+
         frame_counter = 0
         recording_frame_counter = 0
         frames_since_last_motion = 0
         consecutive_change_frames = 0
         initial_motion_detected = False
         classifier_frames: list[tuple[int, MatLike, list[ClusterBoundingBox]]] = []
+        # a buffer of frames that contain motion before we started recording
+        # this way we can write them in later once enough motion is detected.
+        initial_motion_frames = []
 
         # Configure audio device
         sound_device_id = get_device_id_matching(sound_device_name)
@@ -146,6 +164,7 @@ def thundercat(
                 current_time = new_time
 
             logger.debug(f"Frame {frame_counter}")
+            back_sub_frame_history.append(frame)
             frame, bounding_boxes = detect_motion(frame, back_sub, **motion_detection_config)
             change_detected = bool(len(bounding_boxes))
 
@@ -155,6 +174,11 @@ def thundercat(
             else:
                 consecutive_change_frames = 0
                 frames_since_last_motion += 1
+
+            if consecutive_change_frames > 0 and not initial_motion_detected:
+                initial_motion_frames.append(frame)
+            else:
+                initial_motion_frames = []
 
             initial_motion_detected = (
                 initial_motion_detected or consecutive_change_frames > min_consecutive_motion_frames
@@ -168,6 +192,23 @@ def thundercat(
             # We have detected motion for sufficient consecutive frames
             # or we recently detected motion
             if initial_motion_detected and frames_since_last_motion < stop_recording_after:
+
+                # Save the initial state that led to the motion detection
+                if len(initial_motion_frames):
+                    for idx, f in enumerate(initial_motion_frames[:min_consecutive_motion_frames]):
+                        for t in targets:
+                            annotation = (
+                                {
+                                    "Initial Motion Frame": recording_frame_counter,
+                                    "back_sub_history": list(back_sub_frame_history)[min_consecutive_motion_frames:],
+                                }
+                                if idx == 0
+                                else {}
+                            )
+                            t.write(f, annotation)
+                            recording_frame_counter += 1
+
+                # Handle current frames
                 annotation = {}
 
                 # Accumulate classification frames
@@ -199,6 +240,7 @@ def thundercat(
                             idx = random.randint(0, len(sound_files) - 1)
                             logger.info(f"Playing sound file {sound_files[idx]} at volume {current_volume}%")
                             play_sound(sound_files[idx], sound_device_id)
+                            annotation["sound_played"] = sound_files[idx]
 
                     classifier_frames = []
 
@@ -267,7 +309,7 @@ if __name__ == "__main__":
     # source = FileSource("data/video/evaluation/other/2024_12_04-07_11_14.mp4")
 
     # Peeprs 3
-    # source = FileSource("data/log/2024_12_17-16_18_09.mp4")
+    # source = FileSource("data/log/2025_03_22-12_53_22.mp4")
 
     # Cat-like peeps
     # source = FileSource("data/video/evaluation/other/2024_11_29-23_17_21.mp4")
