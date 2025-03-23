@@ -144,12 +144,23 @@ def bounding_box_clusterer(
     f_w, f_h = frame.shape
     mask = (comp_stats[:, 0] >= 0) & (comp_stats[:, 0] < f_h) & (comp_stats[:, 1] >= 0) & (comp_stats[:, 1] < f_w)
     comp_stats = comp_stats[mask]
-    # Filter out background components
+
+    # Filter out background component
     # NOTE: OpenCV returns the indices in reverse order (i.e x, y while the input is y,x)
-    mask = frame[comp_stats[:, 1], comp_stats[:, 0]] != 0
-    comp_stats = comp_stats[mask]
+    if comp_stats.shape[0] > 1:
+        comp_stats = comp_stats[1:]
+
+    # TODO remove this incorrect code
+    # mask = frame[comp_stats[:, 1], comp_stats[:, 0]] != 0
+    # comp_stats = comp_stats[mask]
+
+    # Uncomment for debugging
+    # output_frame = cv.merge((frame, frame, frame))
+    # for x, y, w, h, _ in comp_stats:
+    #     output_frame[y:y+h,x:x+w, [0,2]] = 0
+
     # Filter out too small components
-    comp_stats = [c for c in comp_stats if c[4] < min_initial_cluster_size]
+    comp_stats = [c for c in comp_stats if c[4] >= min_initial_cluster_size]
 
     cluster_bounding_boxes = [
         ClusterBoundingBox([idx], s, x, y, x + w, y + h) for idx, (x, y, w, h, s) in enumerate(comp_stats)

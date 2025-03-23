@@ -90,7 +90,6 @@ class VideoStatGatherer(VideoTarget):
 
 
 # TODO plot ROC curve
-# TODO plot confusion matrix
 
 
 def get_video_stats(video_dir: str, video_folder: str, analysis_dir: str) -> pd.DataFrame:
