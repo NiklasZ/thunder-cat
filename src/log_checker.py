@@ -7,24 +7,25 @@ def list_detected_cats(log_dir: str, required_true_count: int = 1):
     # Regex pattern to match frame lines
     frame_pattern = re.compile(r"Frame (\d+): (\{.*\})")
 
-    # Process all log files in the directory
-    for log_filename in sorted(os.listdir(log_dir)):
-        if not log_filename.endswith(".log"):
-            continue  # Skip non-log files
+    # Traverse the directory tree
+    for root, _, files in os.walk(log_dir):
+        for log_filename in sorted(files):
+            if not log_filename.endswith(".log"):
+                continue  # Skip non-log files
 
-        log_filepath = os.path.join(log_dir, log_filename)
-        video_filepath = log_filepath.replace(".log", ".mp4")
+            log_filepath = os.path.join(root, log_filename)
+            video_filepath = log_filepath.replace(".log", ".mp4")
 
-        with open(log_filepath, "r") as log_file:
-            for line in log_file:
-                match = frame_pattern.search(line)
-                if not match:
-                    raise Exception(f"Cannot parse line:\n{line}")
+            with open(log_filepath, "r") as log_file:
+                for line in log_file:
+                    match = frame_pattern.search(line)
+                    if not match:
+                        raise Exception(f"Cannot parse line:\n{line}")
 
-                frame_number, json_data = match.groups()
-                parsed_data = json.loads(json_data)
-                if "is_cat" in parsed_data and parsed_data["is_cat"].count(True) == required_true_count:
-                    print(f"Log: {log_filepath}, Frame: {frame_number}, Video: {video_filepath}")
+                    frame_number, json_data = match.groups()
+                    parsed_data = json.loads(json_data)
+                    if "is_cat" in parsed_data and parsed_data["is_cat"].count(True) == required_true_count:
+                        print(f"Log: {log_filepath}, Frame: {frame_number}, Video: {video_filepath}")
 
 
 if __name__ == "__main__":
