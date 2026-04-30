@@ -1,26 +1,62 @@
+import glob
+import os
 import re
 import subprocess
 
 
+def _read_text(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _run_v4l2(device: str, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["v4l2-ctl", "-d", device, *args],
+        capture_output=True,
+        text=True,
+        timeout=2,
+    )
+
+
+def _device_card_name(device: str) -> str:
+    name = os.path.basename(device)
+    sys_name = f"/sys/class/video4linux/{name}/name"
+    return _read_text(sys_name)
+
+
 def get_camera_paths(device_name: str) -> list[str]:
-    """Uses v4l2-ctl to get list of found video device paths for a given hardware str."""
-    output = subprocess.check_output("v4l2-ctl --list-devices", shell=True, text=True)
-    devices = output.strip().split("\n\n")
+    """Find /dev/video* nodes whose sysfs-reported camera name matches device_name."""
+    video_devices = sorted(
+        glob.glob("/dev/video*"),
+        key=lambda p: int(re.search(r"\d+$", p).group()),
+    )
 
-    # Iterate through each camera block to find the device name
-    for device in devices:
-        if device_name in device:
-            # Find all video device entries associated with this camera
-            video_devices = re.findall(r"/dev/video\d+", device)
-            # Convert the first match to an integer index
-            if len(video_devices):
-                return video_devices
-            else:
-                raise Exception(
-                    f"Could not find any associated video devices for:\n{device}"
-                )
+    matches = []
+    inspected = []
 
-    raise Exception(f'Could not find device "{device_name}". Found: {devices}')
+    for device in video_devices:
+        card_name = _device_card_name(device)
+        if card_name:
+            inspected.append(f"{device}: {card_name}")
+
+        if device_name not in card_name:
+            continue
+
+        try:
+            result = _run_v4l2(device, "--list-formats-ext")
+        except subprocess.TimeoutExpired:
+            continue
+
+        if result.returncode == 0 and result.stdout.strip():
+            matches.append(device)
+
+    if matches:
+        return matches
+
+    raise Exception(f'Could not find usable device "{device_name}". Found: {inspected}')
 
 
 def get_device_idx_for_format(
@@ -34,19 +70,25 @@ def get_device_idx_for_format(
     outputs = []
 
     for device in devices:
-        result = subprocess.run(
-            ["v4l2-ctl", "-d", device, "--list-formats-ext"],
-            capture_output=True,
-            text=True,
-        )
-        output = result.stdout
-        outputs.append(output)
+        try:
+            result = subprocess.run(
+                ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except subprocess.TimeoutExpired:
+            outputs.append(f"{device}: TIMEOUT")
+            continue
 
-        if resolution in output and video_format in output:
-            return int(device[-1])
+        output = result.stdout or ""
+        outputs.append(f"{device}:\n{output}")
+
+        if result.returncode == 0 and resolution in output and video_format in output:
+            return int(device.rsplit("video", 1)[1])
 
     output_str = "\n" + "\n".join(outputs)
 
     raise Exception(
-        f"Couldn't find device idx for format {video_format}, {height_px}x{width_px}. Found only: {output_str}"
+        f"Couldn't find device idx for format {video_format}, {width_px}x{height_px}. " f"Found only: {output_str}"
     )
