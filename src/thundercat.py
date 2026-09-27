@@ -47,6 +47,9 @@ thundercat_config = {
     "binary_classifier_path": "model/2024_12_18-07_19_36_binary_cat_classifier.pkl",
     "toggle_sound": True,
     "max_log_size_gb": 50,
+    "training_dir": "data/video/training",
+    "max_training_size_gb": 2.0,
+    "training_match_run_types": [1, 2, 3],
 }
 
 background_subtractor_config = {
@@ -334,6 +337,9 @@ if __name__ == "__main__":
             width_px=thundercat_config["width_px"],
             height_px=thundercat_config["height_px"],
             max_log_size_gb=thundercat_config["max_log_size_gb"],
+            training_dir=thundercat_config["training_dir"],
+            max_training_size_gb=thundercat_config["max_training_size_gb"],
+            match_run_types=thundercat_config["training_match_run_types"],
         ),
     ]
     thundercat(

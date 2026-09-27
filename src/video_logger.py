@@ -1,11 +1,12 @@
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
 from datetime import datetime, timedelta
 from io import TextIOWrapper
-from typing import List
+from typing import Iterable, List
 
 import numpy as np
 from cv2.typing import MatLike
@@ -19,6 +20,7 @@ from configuration import (
 )
 
 DEFAULT_VIDEO_LOG_DIR = "data/log"
+DEFAULT_TRAINING_VIDEO_DIR = "data/video/training"
 
 logger = configure_logger()
 
@@ -134,6 +136,9 @@ class VideoLogger(VideoTarget):
         max_log_size_gb=10,
         check_memory_every=18000,  # 10 min at 30 FPS
         max_video_frames=108000,  # 1 hour at 30 FPS
+        training_dir=DEFAULT_TRAINING_VIDEO_DIR,
+        max_training_size_gb=2.0,
+        match_run_types: Iterable[int] = (1, 2, 3),
     ):
         self.logging_dir = logging_dir
         self.max_log_size_gb = max_log_size_gb
@@ -148,6 +153,19 @@ class VideoLogger(VideoTarget):
         self.base_log_path: str | None = None
         self.video_writer: subprocess.Popen[bytes] | None = None
         self.annotation_writer: TextIOWrapper | None = None
+        # Training data collection: recordings with at least one match are copied
+        # into data/video/training/<k>_match based on their longest run of
+        # consecutive matches (k). Each type folder is capped and old files are
+        # never deleted.
+        self.training_dir = training_dir
+        self.max_training_size_gb = max_training_size_gb
+        self.match_run_types = list(match_run_types)
+        self.consecutive_matches = 0
+        self.max_consecutive_matches = 0
+        self.video_path: str | None = None
+        self.annotation_path: str | None = None
+        self.history_path: str | None = None
+        self.history_thread: threading.Thread | None = None
 
     def write(self, frame: MatLike, annotations: dict | None = None):
         """Writes provided frame to video file. Also creates identically named log
@@ -172,20 +190,38 @@ class VideoLogger(VideoTarget):
         ):
             self._close_current_writers()
             self.frame_counter = 0
+            self.consecutive_matches = 0
+            self.max_consecutive_matches = 0
+            self.history_path = None
+            self.history_thread = None
             self.last_frame_written = current_time
             self.last_frame_written_str = to_timestamp(self.last_frame_written)
             date_str = to_date_str(self.last_frame_written)
             self.base_log_path = os.path.join(self.logging_dir, date_str)
             os.makedirs(self.base_log_path, exist_ok=True)
             video_path = os.path.join(self.base_log_path, f"{self.last_frame_written_str}.mp4")
+            self.video_path = video_path
 
             ffmpeg_cmd = generate_ffmpeg_cmd(self.width_px, self.height_px, self.fps, video_path)
             self.video_writer = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
 
             annotations_path = os.path.join(self.base_log_path, f"{self.last_frame_written_str}.log")
+            self.annotation_path = annotations_path
             self.annotation_writer = open(annotations_path, "w")
             annotations["start_time"] = self.last_frame_written_str
             logger.info(f"Started writing to new files: {annotations_path}, {video_path}")
+
+        # Track runs of consecutive matches (a match is a classification window
+        # where every sample is classified as a cat) within the current recording.
+        # A run is broken by any non-match classification. This runs after the
+        # new-file rotation so a verdict on the frame that starts a new recording
+        # is attributed to that new recording.
+        if "is_cat" in annotations:
+            if all(annotations["is_cat"]):
+                self.consecutive_matches += 1
+                self.max_consecutive_matches = max(self.max_consecutive_matches, self.consecutive_matches)
+            else:
+                self.consecutive_matches = 0
 
         self.video_writer.stdin.write(frame.tobytes())
 
@@ -194,6 +230,7 @@ class VideoLogger(VideoTarget):
             # Make a copy as we are passing this to a thread
             history_cpy = [np.copy(arr) for arr in history]
             history_path = os.path.join(self.base_log_path, f"{self.last_frame_written_str}_history.mp4")
+            self.history_path = history_path
             logger.info(f"Saving background subtractor state to {history_path}")
 
             thread = threading.Thread(
@@ -201,6 +238,7 @@ class VideoLogger(VideoTarget):
                 args=(self.width_px, self.height_px, self.fps, history_path, history_cpy),
                 daemon=True,
             )
+            self.history_thread = thread
             thread.start()
 
         if len(annotations):
@@ -222,6 +260,66 @@ class VideoLogger(VideoTarget):
             self.annotation_writer.close()
             self.annotation_writer = None
             logger.info("Finished writing files")
+        self._collect_training_recording()
+
+    def _collect_training_recording(self):
+        """Copies the just-finished recording (video and annotation file) into the
+        training folder matching its longest run of consecutive matches, e.g.
+        data/video/training/2_match for a recording whose longest run is 2.
+
+        Only recordings with at least one match are collected. Collection stops
+        for a type folder once it reaches its size limit; existing training files
+        are never deleted.
+        """
+        if not (self.training_dir and self.video_path and self.annotation_path):
+            return
+        # Claim the finished recording so a later close (e.g. double close or
+        # rotation right after a session end via thundercat.py) cannot collect
+        # the same recording again.
+        video_path, annotation_path = self.video_path, self.annotation_path
+        history_path, history_thread = self.history_path, self.history_thread
+        self.video_path = None
+        self.annotation_path = None
+        self.history_path = None
+        self.history_thread = None
+
+        k = self.max_consecutive_matches
+        if k < 1:
+            return
+        if k not in self.match_run_types:
+            logger.info(
+                f"Recording {os.path.basename(video_path)} has max {k} consecutive "
+                f"match(es), not in {self.match_run_types}; skipping training collection"
+            )
+            return
+
+        dest_dir = os.path.join(self.training_dir, f"{k}_match")
+        os.makedirs(dest_dir, exist_ok=True)
+        if check_current_memory_usage_gb(dest_dir) >= self.max_training_size_gb:
+            logger.info(
+                f"Training folder {dest_dir} already at {self.max_training_size_gb} GB; "
+                f"skipping recording {os.path.basename(video_path)}"
+            )
+            return
+
+        # The background subtractor history is encoded in a daemon thread; wait
+        # for it so the copy below never picks up a partial file.
+        history_timeout_s = 30
+        if history_path and history_thread and history_thread.is_alive():
+            history_thread.join(timeout=history_timeout_s)
+        sources = [video_path, annotation_path]
+        if history_path and os.path.isfile(history_path):
+            if history_thread and history_thread.is_alive():
+                logger.warning(
+                    f"History writer for {os.path.basename(history_path)} still running after "
+                    f"{history_timeout_s}s; skipping it for training collection"
+                )
+            else:
+                sources.append(history_path)
+
+        for src in sources:
+            shutil.copy2(src, os.path.join(dest_dir, os.path.basename(src)))
+        logger.info(f"Collected {k}_match training recording into {dest_dir}")
 
     def close(self):
         self._close_current_writers()
